@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/wailsapp/wails/master/v2/pkg/wails/schemas/wails-schema.json",
+  "name": "ScreenOCR",
+  "outputfilename": "ScreenOCR",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "ScreenOCR",
+    "email": ""
+  },
+  "info": {
+    "companyName": "ScreenOCR",
+    "productName": "ScreenOCR",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2024",
+    "comments": "屏幕文字识别工具"
+  }
+}
+

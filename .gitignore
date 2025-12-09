@@ -1,0 +1,48 @@
+# Wails
+build/
+dist/
+.wails/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# 依赖
+vendor/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 配置文件（包含敏感信息）
+config.json
+
+# 临时文件
+*.tmp
+*.log
+*.ps1
+ocr_*.png
+ocr_*.txt
+
+# 测试
+*.test
+
