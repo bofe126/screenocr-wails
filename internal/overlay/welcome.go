@@ -220,7 +220,7 @@ func welcomeWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			return 0
 		}
 
-		// "开始使用" 按钮区域 (30, 340, 220, 378)
+		// "最小化到托盘" 按钮区域 (30, 340, 220, 378)
 		if x >= 30 && x <= 220 && y >= 340 && y <= 378 {
 			w.handleHide(false)
 			return 0
@@ -447,7 +447,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	}
 
 	// ========== 按钮区域 ==========
-	// "开始使用" 按钮
+	// "最小化到托盘" 按钮
 	btnBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorBtnBg))
 	btnRect := RECT{30, 340, 220, 378}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&btnRect)), btnBrush)
@@ -456,7 +456,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	procSelectObject.Call(hdc, hBoldFont)
 	procSetTextColor.Call(hdc, uintptr(colorBtnText))
 	btnTextRect := RECT{30, 350, 220, 378}
-	btnText := "开始使用"
+	btnText := "最小化到托盘"
 	btnUTF16, _ := syscall.UTF16FromString(btnText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&btnUTF16[0])), uintptr(len(btnUTF16)-1),
 		uintptr(unsafe.Pointer(&btnTextRect)), DT_CENTER|DT_NOPREFIX)

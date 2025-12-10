@@ -108,7 +108,8 @@ screenocr-wails/
 
 ### OCR 引擎
 
-- **Windows OCR**: 使用 PowerShell 调用 Windows Media OCR API
+- **Windows OCR**: 使用 PowerShell 直接调用 Windows Media OCR API（无需 Python 依赖）
+- **Windows OCR (Python)**: 保留的 Python 版本，可通过配置 `ocr_engine: "windows-python"` 使用
 - **WeChatOCR**: 占位实现，需要 CGO 支持
 
 ### 覆盖层窗口

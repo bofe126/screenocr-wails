@@ -88,9 +88,10 @@ function getConfigFromUI() {
         auto_copy: elements.autoCopy.checked,
         image_preprocess: elements.imagePreprocess.checked,
         show_debug: elements.showDebug.checked,
-        first_run: false,
-        show_welcome: false,
-        show_startup_notification: true,
+        // 保留原有配置值，避免覆盖用户设置
+        first_run: currentConfig.first_run !== undefined ? currentConfig.first_run : false,
+        show_welcome: currentConfig.show_welcome !== undefined ? currentConfig.show_welcome : false,
+        show_startup_notification: currentConfig.show_startup_notification !== undefined ? currentConfig.show_startup_notification : true,
     };
 }
 

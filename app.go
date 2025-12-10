@@ -183,9 +183,12 @@ func (a *App) onWelcomeClose(dontShowAgain bool, openSettings bool) {
 		a.saveConfig()
 	}
 
-	// 如果用户点击了"详细设置"，显示主窗口
 	if openSettings {
+		// 如果用户点击了"详细设置"，显示主窗口
 		runtime.WindowShow(a.ctx)
+	} else {
+		// 如果用户点击了"最小化到托盘"，确保主窗口隐藏到托盘
+		runtime.WindowHide(a.ctx)
 	}
 }
 
@@ -239,8 +242,12 @@ func (a *App) initOCREngine() {
 	switch a.config.OcrEngine {
 	case "wechat":
 		a.ocrEngine = ocr.NewWeChatOCR()
-	default:
+	case "windows-python":
+		// 保留 Python 版本作为备选（如果需要）
 		a.ocrEngine = ocr.NewWindowsOCR()
+	default:
+		// 默认使用 PowerShell 版本（无需 Python 依赖）
+		a.ocrEngine = ocr.NewWindowsOCRNative()
 	}
 
 	if a.ocrEngine != nil && a.ocrEngine.IsAvailable() {
@@ -422,7 +429,25 @@ func (a *App) GetConfig() Config {
 func (a *App) SaveConfig(cfg Config) error {
 	a.mu.Lock()
 	oldEngine := a.config.OcrEngine
-	a.config = cfg
+	
+	// 合并配置，保留不在 UI 中显示的字段（避免被覆盖）
+	// 只更新 UI 中可配置的字段
+	a.config.TriggerDelayMs = cfg.TriggerDelayMs
+	a.config.Hotkey = cfg.Hotkey
+	a.config.AutoCopy = cfg.AutoCopy
+	a.config.ShowDebug = cfg.ShowDebug
+	a.config.ImagePreprocess = cfg.ImagePreprocess
+	a.config.OcrEngine = cfg.OcrEngine
+	a.config.EnableTranslation = cfg.EnableTranslation
+	a.config.TranslationSource = cfg.TranslationSource
+	a.config.TranslationTarget = cfg.TranslationTarget
+	a.config.TencentSecretId = cfg.TencentSecretId
+	a.config.TencentSecretKey = cfg.TencentSecretKey
+	// 保留原有值，不覆盖（这些字段不在 UI 中显示）
+	// a.config.FirstRun 保持不变
+	// a.config.ShowWelcome 保持不变
+	// a.config.ShowStartupNotify 保持不变
+	
 	a.mu.Unlock()
 
 	// 更新翻译器凭证
