@@ -43,6 +43,7 @@ type App struct {
 	configPath string
 	mu         sync.RWMutex
 	enabled    bool
+	quitting   bool // 标记是否正在退出程序
 
 	// 组件
 	ocrEngine   ocr.Engine
@@ -52,6 +53,7 @@ type App struct {
 	translator  *translator.TencentTranslator
 	overlay     *overlay.Overlay
 	popup       *overlay.TranslationPopup
+	welcome     *overlay.WelcomePage
 }
 
 // NewApp 创建新应用实例
@@ -60,6 +62,23 @@ func NewApp() *App {
 		enabled: true,
 		config:  defaultConfig(),
 	}
+}
+
+// getConfigDir 获取配置文件目录
+func getConfigDir() string {
+	// 优先使用 APPDATA 环境变量
+	appData := os.Getenv("APPDATA")
+	if appData != "" {
+		return filepath.Join(appData, "ScreenOCR")
+	}
+	// 回退到用户主目录
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, ".screenocr")
+	}
+	// 最后回退到可执行文件目录
+	exe, _ := os.Executable()
+	return filepath.Dir(exe)
 }
 
 // defaultConfig 默认配置
@@ -86,9 +105,10 @@ func defaultConfig() Config {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// 获取配置文件路径
-	exe, _ := os.Executable()
-	a.configPath = filepath.Join(filepath.Dir(exe), "config.json")
+	// 获取配置文件路径（使用 %APPDATA%\ScreenOCR 目录）
+	configDir := getConfigDir()
+	os.MkdirAll(configDir, 0755) // 确保目录存在
+	a.configPath = filepath.Join(configDir, "config.json")
 
 	// 加载配置
 	a.loadConfig()
@@ -116,6 +136,8 @@ func (a *App) startup(ctx context.Context) {
 	// 初始化热键管理器
 	a.hotkeyMgr = hotkey.NewManager(a.config.Hotkey, a.config.TriggerDelayMs)
 	a.hotkeyMgr.OnTrigger = a.onHotkeyTriggered
+	a.hotkeyMgr.OnKeyRelease = a.onHotkeyReleased // 按键松开时关闭覆盖层
+	a.hotkeyMgr.OnEscape = a.onEscapePressed      // 全局 ESC 键关闭（与 Python 一致）
 
 	// 初始化系统托盘
 	a.initTray()
@@ -123,7 +145,48 @@ func (a *App) startup(ctx context.Context) {
 	// 启动热键监听
 	go a.hotkeyMgr.Start()
 
+	// 处理首次启动引导
+	a.handleStartupGuide()
+
 	fmt.Println("✓ ScreenOCR 启动完成")
+}
+
+// handleStartupGuide 处理启动引导
+func (a *App) handleStartupGuide() {
+	a.mu.RLock()
+	showWelcome := a.config.ShowWelcome
+	showNotify := a.config.ShowStartupNotify
+	hotkey := a.config.Hotkey
+	a.mu.RUnlock()
+
+	if showWelcome {
+		// 显示欢迎页面
+		a.welcome = overlay.NewWelcomePage()
+		a.welcome.OnClose = a.onWelcomeClose
+		a.welcome.Show(hotkey)
+	} else if showNotify {
+		// 显示 Toast 通知
+		toast := overlay.NewStartupToast()
+		toast.Show(hotkey)
+	}
+}
+
+// onWelcomeClose 欢迎页面关闭回调
+func (a *App) onWelcomeClose(dontShowAgain bool, openSettings bool) {
+	fmt.Printf("[Welcome] 关闭，不再显示=%v，打开设置=%v\n", dontShowAgain, openSettings)
+
+	// 更新配置
+	if dontShowAgain {
+		a.mu.Lock()
+		a.config.ShowWelcome = false
+		a.mu.Unlock()
+		a.saveConfig()
+	}
+
+	// 如果用户点击了"详细设置"，显示主窗口
+	if openSettings {
+		runtime.WindowShow(a.ctx)
+	}
 }
 
 // shutdown 应用关闭时调用
@@ -159,6 +222,18 @@ func (a *App) domReady(ctx context.Context) {
 	// 可以在这里执行需要 DOM 就绪后的操作
 }
 
+// beforeClose 窗口关闭前调用 - 隐藏到托盘而不是退出
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	// 如果是从托盘点击"退出"，允许程序退出
+	if a.quitting {
+		return false
+	}
+	// 否则只是隐藏窗口到托盘
+	runtime.WindowHide(ctx)
+	fmt.Println("设置窗口已隐藏到托盘")
+	return true
+}
+
 // initOCREngine 初始化 OCR 引擎
 func (a *App) initOCREngine() {
 	switch a.config.OcrEngine {
@@ -187,6 +262,7 @@ func (a *App) initTray() {
 		a.mu.Unlock()
 	}
 	a.trayIcon.OnQuit = func() {
+		a.quitting = true // 标记正在退出
 		runtime.Quit(a.ctx)
 	}
 	go a.trayIcon.Run()
@@ -245,9 +321,11 @@ func (a *App) onHotkeyTriggered() {
 func (a *App) onTextSelected(text string, x, y int) {
 	fmt.Printf("选中文字: %s\n", text)
 
-	// 检查是否启用翻译
+	// 获取配置（加锁读取）
 	a.mu.RLock()
 	enableTranslation := a.config.EnableTranslation
+	translationSource := a.config.TranslationSource
+	translationTarget := a.config.TranslationTarget
 	a.mu.RUnlock()
 
 	if !enableTranslation || a.translator == nil {
@@ -258,12 +336,12 @@ func (a *App) onTextSelected(text string, x, y int) {
 	if a.popup != nil {
 		a.popup.Show(text, x, y)
 
-		// 异步翻译
+		// 异步翻译（使用本地变量副本，避免并发问题）
 		go func() {
 			result, err := a.translator.Translate(
 				text,
-				a.config.TranslationSource,
-				a.config.TranslationTarget,
+				translationSource,
+				translationTarget,
 			)
 			if err != nil {
 				a.popup.ShowError(err.Error())
@@ -277,6 +355,29 @@ func (a *App) onTextSelected(text string, x, y int) {
 // onOverlayClose 覆盖层关闭回调
 func (a *App) onOverlayClose() {
 	fmt.Println("覆盖层已关闭")
+	if a.popup != nil {
+		a.popup.Hide()
+	}
+}
+
+// onHotkeyReleased 热键松开回调 - 关闭覆盖层和翻译窗口（与 Python cleanup_windows 一致）
+func (a *App) onHotkeyReleased() {
+	fmt.Println("热键松开，关闭覆盖层和翻译窗口")
+	if a.overlay != nil {
+		a.overlay.Hide()
+	}
+	// 与 Python 版本的 cleanup_windows 一致：同时关闭翻译窗口
+	if a.popup != nil {
+		a.popup.Hide()
+	}
+}
+
+// onEscapePressed 全局 ESC 键回调（与 Python cleanup_windows 一致）
+func (a *App) onEscapePressed() {
+	fmt.Println("ESC 键按下，关闭覆盖层和翻译窗口")
+	if a.overlay != nil {
+		a.overlay.Hide()
+	}
 	if a.popup != nil {
 		a.popup.Hide()
 	}
@@ -381,4 +482,11 @@ func (a *App) ShowWindow() {
 // HideWindow 隐藏主窗口
 func (a *App) HideWindow() {
 	runtime.WindowHide(a.ctx)
+}
+
+// showDuplicateToast 显示重复运行提示
+func (a *App) showDuplicateToast() {
+	fmt.Println("收到重复运行通知，显示 Toast")
+	toast := overlay.NewStartupToast()
+	toast.ShowMessage("ScreenOCR 已在运行中", "程序已在托盘运行，请勿重复启动")
 }

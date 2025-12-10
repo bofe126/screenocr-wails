@@ -3,10 +3,14 @@
 package tray
 
 import (
+	_ "embed"
 	"fmt"
 
 	"github.com/energye/systray"
 )
+
+//go:embed icon.ico
+var iconData []byte
 
 // SystemTray 系统托盘
 type SystemTray struct {
@@ -57,6 +61,18 @@ func (s *SystemTray) onReady() {
 	systray.SetTitle("ScreenOCR")
 	systray.SetTooltip("ScreenOCR - 屏幕文字识别")
 
+	// 设置左键点击回调（与右键菜单"设置"相同功能）
+	systray.SetOnClick(func(menu systray.IMenu) {
+		if s.OnSettings != nil {
+			s.OnSettings()
+		}
+	})
+
+	// 设置右键点击回调（显示菜单）
+	systray.SetOnRClick(func(menu systray.IMenu) {
+		menu.ShowMenu()
+	})
+
 	// 添加菜单项
 	mSettings := systray.AddMenuItem("设置", "打开设置窗口")
 	s.mToggle = systray.AddMenuItemCheckbox("启用服务", "启用/禁用 OCR 服务", s.enabled)
@@ -105,52 +121,7 @@ func (s *SystemTray) onExit() {
 	fmt.Println("系统托盘已关闭")
 }
 
-// getIconData 获取图标数据（16x16 ICO）
+// getIconData 获取图标数据（使用嵌入的 icon.ico）
 func getIconData() []byte {
-	// 简化的蓝色方块图标 (ICO 格式头 + 16x16 32位位图)
-	// 实际使用时建议用 embed 嵌入真实的 .ico 文件
-	iconData := make([]byte, 0, 1150)
-
-	// ICO 头 (6 bytes)
-	iconData = append(iconData, 0, 0) // Reserved
-	iconData = append(iconData, 1, 0) // Type: ICO
-	iconData = append(iconData, 1, 0) // Count: 1 image
-
-	// ICONDIRENTRY (16 bytes)
-	iconData = append(iconData, 16)  // Width
-	iconData = append(iconData, 16)  // Height
-	iconData = append(iconData, 0)   // Colors (0 = > 256)
-	iconData = append(iconData, 0)   // Reserved
-	iconData = append(iconData, 1, 0) // Color planes
-	iconData = append(iconData, 32, 0) // Bits per pixel
-	// Size of image data (will be 1128 = 40 header + 1024 pixels + 64 mask)
-	iconData = append(iconData, 0x68, 0x04, 0x00, 0x00)
-	// Offset to image data (22 bytes from start)
-	iconData = append(iconData, 0x16, 0x00, 0x00, 0x00)
-
-	// BITMAPINFOHEADER (40 bytes)
-	iconData = append(iconData, 40, 0, 0, 0) // Header size
-	iconData = append(iconData, 16, 0, 0, 0) // Width
-	iconData = append(iconData, 32, 0, 0, 0) // Height (2x for mask)
-	iconData = append(iconData, 1, 0)        // Planes
-	iconData = append(iconData, 32, 0)       // Bits per pixel
-	iconData = append(iconData, 0, 0, 0, 0)  // Compression
-	iconData = append(iconData, 0, 4, 0, 0)  // Image size
-	iconData = append(iconData, 0, 0, 0, 0)  // X pixels per meter
-	iconData = append(iconData, 0, 0, 0, 0)  // Y pixels per meter
-	iconData = append(iconData, 0, 0, 0, 0)  // Colors used
-	iconData = append(iconData, 0, 0, 0, 0)  // Important colors
-
-	// 像素数据 (16x16 BGRA, 从下到上)
-	// 蓝色: B=238, G=97, R=67 (#4361EE)
-	for i := 0; i < 256; i++ {
-		iconData = append(iconData, 238, 97, 67, 255) // BGRA
-	}
-
-	// AND mask (16x16 位, 64 bytes) - 全透明
-	for i := 0; i < 64; i++ {
-		iconData = append(iconData, 0)
-	}
-
 	return iconData
 }

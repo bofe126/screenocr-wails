@@ -10,11 +10,13 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // TencentTranslator 腾讯云翻译器
 type TencentTranslator struct {
+	mu        sync.RWMutex
 	secretID  string
 	secretKey string
 	endpoint  string
@@ -59,18 +61,41 @@ func NewTencentTranslator(secretID, secretKey string) *TencentTranslator {
 
 // SetCredentials 设置凭证
 func (t *TencentTranslator) SetCredentials(secretID, secretKey string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.secretID = secretID
 	t.secretKey = secretKey
+	fmt.Printf("[Translator] 凭证已更新: ID=%s, Key=%s\n",
+		maskString(secretID), maskString(secretKey))
 }
 
 // IsConfigured 检查是否已配置
 func (t *TencentTranslator) IsConfigured() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.secretID != "" && t.secretKey != ""
+}
+
+// getCredentials 获取凭证（内部使用，需要在锁内调用或自行加锁）
+func (t *TencentTranslator) getCredentials() (string, string) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.secretID, t.secretKey
+}
+
+// maskString 遮蔽字符串用于日志
+func maskString(s string) string {
+	if len(s) <= 4 {
+		return "****"
+	}
+	return s[:4] + "****"
 }
 
 // Translate 翻译文本
 func (t *TencentTranslator) Translate(text, source, target string) (string, error) {
-	if !t.IsConfigured() {
+	// 获取凭证（带锁）
+	secretID, secretKey := t.getCredentials()
+	if secretID == "" || secretKey == "" {
 		return "", fmt.Errorf("翻译 API 未配置")
 	}
 
@@ -87,10 +112,10 @@ func (t *TencentTranslator) Translate(text, source, target string) (string, erro
 		return "", fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 生成签名
+	// 生成签名（使用本地凭证副本，避免并发问题）
 	timestamp := time.Now().Unix()
 	date := time.Unix(timestamp, 0).UTC().Format("2006-01-02")
-	authorization := t.sign(bodyBytes, timestamp, date)
+	authorization := t.signWithCredentials(bodyBytes, timestamp, date, secretID, secretKey)
 
 	// 发送请求
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s", t.endpoint), bytes.NewReader(bodyBytes))
@@ -133,8 +158,8 @@ func (t *TencentTranslator) Translate(text, source, target string) (string, erro
 	return result.Response.TargetText, nil
 }
 
-// sign 生成 TC3-HMAC-SHA256 签名
-func (t *TencentTranslator) sign(payload []byte, timestamp int64, date string) string {
+// signWithCredentials 生成 TC3-HMAC-SHA256 签名（使用传入的凭证）
+func (t *TencentTranslator) signWithCredentials(payload []byte, timestamp int64, date, secretID, secretKey string) string {
 	// 步骤1：拼接规范请求串
 	httpRequestMethod := "POST"
 	canonicalURI := "/"
@@ -165,14 +190,14 @@ func (t *TencentTranslator) sign(payload []byte, timestamp int64, date string) s
 	}, "\n")
 
 	// 步骤3：计算签名
-	secretDate := hmacSHA256([]byte("TC3"+t.secretKey), date)
+	secretDate := hmacSHA256([]byte("TC3"+secretKey), date)
 	secretService := hmacSHA256(secretDate, t.service)
 	secretSigning := hmacSHA256(secretService, "tc3_request")
 	signature := hex.EncodeToString(hmacSHA256(secretSigning, stringToSign))
 
 	// 步骤4：拼接 Authorization
 	authorization := fmt.Sprintf("%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		algorithm, t.secretID, credentialScope, signedHeaders, signature)
+		algorithm, secretID, credentialScope, signedHeaders, signature)
 
 	return authorization
 }

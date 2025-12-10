@@ -4,6 +4,7 @@ package hotkey
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -87,7 +88,9 @@ type Manager struct {
 	pressTime    time.Time
 	triggered    bool
 
-	OnTrigger func() // 触发回调
+	OnTrigger    func() // 触发回调
+	OnKeyRelease func() // 按键松开回调（用于关闭覆盖层）
+	OnEscape     func() // ESC 键回调（全局，与 Python 一致）
 }
 
 // NewManager 创建热键管理器
@@ -102,6 +105,10 @@ func NewManager(hotkey string, delayMs int) *Manager {
 
 // Start 启动热键监听
 func (m *Manager) Start() error {
+	// 锁定到当前 OS 线程，Win32 钩子必须在同一线程处理消息
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	m.mu.Lock()
 	if m.running {
 		m.mu.Unlock()
@@ -191,6 +198,8 @@ func (m *Manager) UpdateHotkey(hotkey string, delayMs int) {
 	m.triggered = false
 }
 
+const VK_ESCAPE = 0x1B // ESC 键码
+
 // keyboardProc 键盘钩子回调
 func (m *Manager) keyboardProc(nCode int, wParam uintptr, lParam uintptr) uintptr {
 	if nCode >= 0 {
@@ -201,6 +210,18 @@ func (m *Manager) keyboardProc(nCode int, wParam uintptr, lParam uintptr) uintpt
 		keyName := keyNameMap[vkCode]
 		if keyName == "" {
 			keyName = fmt.Sprintf("0x%X", vkCode)
+		}
+
+		// ⭐ 全局 ESC 键处理（与 Python 一致）
+		if vkCode == VK_ESCAPE && wParam == WM_KEYDOWN {
+			fmt.Println("[热键] ESC 键按下，触发全局关闭")
+			m.mu.Lock()
+			m.pressTime = time.Time{}
+			m.triggered = false
+			m.mu.Unlock()
+			if m.OnEscape != nil {
+				go m.OnEscape()
+			}
 		}
 
 		// 获取配置的热键键码
@@ -241,6 +262,7 @@ func (m *Manager) keyboardProc(nCode int, wParam uintptr, lParam uintptr) uintpt
 			if isTargetKey {
 				m.mu.Lock()
 				wasPressed := m.pressedKeys[vkCode]
+				wasTriggered := m.triggered
 				if wasPressed {
 					delete(m.pressedKeys, vkCode)
 					fmt.Printf("[热键] 释放: %s (vk=%d)\n", keyName, vkCode)
@@ -254,6 +276,12 @@ func (m *Manager) keyboardProc(nCode int, wParam uintptr, lParam uintptr) uintpt
 					m.triggered = false
 				}
 				m.mu.Unlock()
+
+				// ⭐ 关键：如果之前已触发，按键松开时关闭覆盖层
+				if wasTriggered && m.OnKeyRelease != nil {
+					fmt.Println("[热键] 📤 按键松开，触发关闭覆盖层")
+					go m.OnKeyRelease()
+				}
 			}
 		}
 	}
