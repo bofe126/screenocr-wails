@@ -205,7 +205,7 @@ func (t *StartupToast) onPaint(hwnd uintptr) {
 	// 创建标题字体
 	titleFontName, _ := syscall.UTF16PtrFromString("Microsoft YaHei UI")
 	hTitleFont, _, _ := procCreateFontW.Call(
-		uintptr(15), 0, 0, 0,
+		uintptr(20), 0, 0, 0, // 标题 20px
 		600, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -214,7 +214,7 @@ func (t *StartupToast) onPaint(hwnd uintptr) {
 
 	// 创建正文字体
 	hTextFont, _, _ := procCreateFontW.Call(
-		uintptr(13), 0, 0, 0,
+		uintptr(17), 0, 0, 0, // 正文 17px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),

@@ -356,10 +356,10 @@ func (p *TranslationPopup) onPaint(hwnd uintptr) {
 
 	procSetBkMode.Call(hdc, TRANSPARENT_BK)
 
-	// 创建主字体 - Segoe UI (现代 Windows 风格)
-	fontName, _ := syscall.UTF16PtrFromString("Segoe UI")
+	// 创建主字体 - Microsoft YaHei UI
+	fontName, _ := syscall.UTF16PtrFromString("Microsoft YaHei UI")
 	hFont, _, _ := procCreateFontW.Call(
-		uintptr(15), 0, 0, 0,
+		uintptr(20), 0, 0, 0, // 正文 20px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(fontName)),
@@ -371,12 +371,11 @@ func (p *TranslationPopup) onPaint(hwnd uintptr) {
 	}()
 
 	// 创建小号字体（用于标签）
-	smallFontName, _ := syscall.UTF16PtrFromString("Segoe UI")
 	hSmallFont, _, _ := procCreateFontW.Call(
-		uintptr(12), 0, 0, 0,
+		uintptr(16), 0, 0, 0, // 标签 16px
 		600, 0, 0, 0, // 粗体
 		1, 0, 0, 0, 0,
-		uintptr(unsafe.Pointer(smallFontName)),
+		uintptr(unsafe.Pointer(fontName)),
 	)
 	defer procDeleteObject.Call(hSmallFont)
 

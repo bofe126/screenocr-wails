@@ -58,6 +58,57 @@ var (
 	procBitBlt                 = gdi32.NewProc("BitBlt")
 	procCreateSolidBrush       = gdi32.NewProc("CreateSolidBrush")
 	procFillRect               = user32.NewProc("FillRect") // FillRect 在 user32.dll 中
+	procGetDpiForSystem        = user32.NewProc("GetDpiForSystem")
+)
+
+// 系统 DPI 缓存
+var systemDPI int
+var dpiInitialized bool
+
+// GetSystemDPI 获取系统 DPI
+func GetSystemDPI() int {
+	if dpiInitialized {
+		return systemDPI
+	}
+	dpiInitialized = true
+
+	// 方法1：使用 GetDeviceCaps（最可靠）
+	hdc, _, _ := procGetDC.Call(0)
+	if hdc != 0 {
+		dpi, _, _ := procGetDeviceCaps.Call(hdc, 88) // LOGPIXELSX = 88
+		procReleaseDC.Call(0, hdc)
+		if dpi > 0 {
+			systemDPI = int(dpi)
+			fmt.Printf("[DPI] 检测到系统 DPI: %d (缩放比例: %d%%)\n", systemDPI, systemDPI*100/96)
+			return systemDPI
+		}
+	}
+
+	// 方法2：尝试使用 GetDpiForSystem (Windows 10 1607+)
+	dpi, _, _ := procGetDpiForSystem.Call()
+	if dpi > 0 {
+		systemDPI = int(dpi)
+		fmt.Printf("[DPI] 检测到系统 DPI (GetDpiForSystem): %d\n", systemDPI)
+		return systemDPI
+	}
+
+	// 默认 96 DPI
+	systemDPI = 96
+	fmt.Println("[DPI] 使用默认 DPI: 96")
+	return systemDPI
+}
+
+// ScaleForDPI 根据 DPI 缩放值
+func ScaleForDPI(value int) int {
+	dpi := GetSystemDPI()
+	scaled := value * dpi / 96
+	return scaled
+}
+
+var (
+	procGetDC         = user32.NewProc("GetDC")
+	procReleaseDC     = user32.NewProc("ReleaseDC")
+	procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
 	procCreatePen              = gdi32.NewProc("CreatePen")
 	procRectangle              = gdi32.NewProc("Rectangle")
 	procSetBkMode              = gdi32.NewProc("SetBkMode")
@@ -719,10 +770,10 @@ func (o *Overlay) applyHighlight(pixelData []byte, imgWidth, imgHeight int, text
 
 // drawWaitingText 绘制等待文字 "识别中，请稍后..."
 func (o *Overlay) drawWaitingText(hdc uintptr, width, height int) {
-	// 创建字体 - 类似 Python 的 'Microsoft YaHei UI', 16
+	// 创建字体
 	fontName, _ := syscall.UTF16PtrFromString("Microsoft YaHei UI")
 	hFont, _, _ := procCreateFontW.Call(
-		uintptr(32), 0, 0, 0, // 高度32像素, 宽度自动
+		uintptr(40), 0, 0, 0, // 等待文字 40px
 		400, 0, 0, 0, // 正常粗细
 		1,    // DEFAULT_CHARSET
 		0, 0, // OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS

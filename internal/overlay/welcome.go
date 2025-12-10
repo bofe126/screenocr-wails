@@ -315,7 +315,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// 创建大标题字体
 	titleFontName, _ := syscall.UTF16PtrFromString("Microsoft YaHei UI")
 	hTitleFont, _, _ := procCreateFontW.Call(
-		uintptr(26), 0, 0, 0,
+		uintptr(36), 0, 0, 0, // 大标题 36px
 		700, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -324,7 +324,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建正文字体
 	hTextFont, _, _ := procCreateFontW.Call(
-		uintptr(16), 0, 0, 0,
+		uintptr(20), 0, 0, 0, // 正文 20px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -333,7 +333,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建粗体小标题字体
 	hBoldFont, _, _ := procCreateFontW.Call(
-		uintptr(15), 0, 0, 0,
+		uintptr(20), 0, 0, 0, // 小标题 20px
 		700, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -342,7 +342,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建小字体
 	hSmallFont, _, _ := procCreateFontW.Call(
-		uintptr(13), 0, 0, 0,
+		uintptr(17), 0, 0, 0, // 小字 17px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
