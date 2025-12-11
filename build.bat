@@ -57,6 +57,12 @@ if %errorlevel% neq 0 (
 echo [3/4] 启用 CGO（WeChatOCR 需要）...
 set CGO_ENABLED=1
 
+echo [图标] 准备应用图标...
+if not exist build mkdir build
+if not exist build\windows mkdir build\windows
+copy /Y assets\icons\appicon.png build\appicon.png >nul
+copy /Y assets\icons\windows\icon.ico build\windows\icon.ico >nul
+
 echo [4/5] 构建应用...
 wails build -clean
 if %errorlevel% neq 0 (
