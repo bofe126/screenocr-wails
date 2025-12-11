@@ -114,6 +114,7 @@ func (a *App) startup(ctx context.Context) {
 	a.loadConfig()
 
 	// 初始化 OCR 引擎
+	fmt.Println("正在初始化 OCR 引擎...")
 	a.initOCREngine()
 
 	// 初始化截图器
@@ -239,9 +240,16 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 
 // initOCREngine 初始化 OCR 引擎
 func (a *App) initOCREngine() {
+	engineName := a.config.OcrEngine
+	if engineName == "" {
+		engineName = "windows-native" // 默认值
+	}
+
 	switch a.config.OcrEngine {
 	case "wechat":
-		a.ocrEngine = ocr.NewWeChatOCR()
+		// 使用 CGO 版本调用微信 OCR
+		// 注意：需要编译时启用 CGO 和 C 编译器
+		a.ocrEngine = ocr.NewWeChatOCRCGO()
 	case "windows-python":
 		// 保留 Python 版本作为备选（如果需要）
 		a.ocrEngine = ocr.NewWindowsOCR()
@@ -251,9 +259,14 @@ func (a *App) initOCREngine() {
 	}
 
 	if a.ocrEngine != nil && a.ocrEngine.IsAvailable() {
-		fmt.Printf("✓ OCR 引擎 (%s) 初始化成功\n", a.config.OcrEngine)
+		fmt.Printf("✓ OCR 引擎 (%s) 初始化成功\n", engineName)
 	} else {
-		fmt.Printf("⚠ OCR 引擎 (%s) 不可用\n", a.config.OcrEngine)
+		fmt.Printf("⚠ OCR 引擎 (%s) 不可用\n", engineName)
+		if a.ocrEngine != nil {
+			if errMsg := a.ocrEngine.GetError(); errMsg != "" {
+				fmt.Printf("  错误: %s\n", errMsg)
+			}
+		}
 	}
 }
 

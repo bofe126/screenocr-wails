@@ -10,6 +10,9 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
+:: 启用 CGO（WeChatOCR 需要）
+set CGO_ENABLED=1
+
 :: 启动 Wails 开发服务器
 wails dev
 

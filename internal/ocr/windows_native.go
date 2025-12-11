@@ -35,7 +35,8 @@ func (w *WindowsOCRNative) init() {
 	scriptPath, err := w.createScript()
 	if err != nil {
 		w.errorMsg = fmt.Sprintf("创建 OCR 脚本失败: %v", err)
-		fmt.Println("❌ " + w.errorMsg)
+		fmt.Println("❌ Windows OCR: " + w.errorMsg)
+		w.available = false
 		return
 	}
 	w.scriptPath = scriptPath
@@ -44,7 +45,8 @@ func (w *WindowsOCRNative) init() {
 	powershellPath := w.findPowerShell()
 	if powershellPath == "" {
 		w.errorMsg = "未找到 PowerShell"
-		fmt.Println("❌ " + w.errorMsg)
+		fmt.Println("❌ Windows OCR: " + w.errorMsg)
+		w.available = false
 		return
 	}
 	w.powershellPath = powershellPath // 缓存路径
@@ -52,8 +54,10 @@ func (w *WindowsOCRNative) init() {
 	// 测试脚本是否可用
 	if err := w.testScript(powershellPath); err != nil {
 		w.errorMsg = fmt.Sprintf("PowerShell OCR 脚本测试失败: %v", err)
-		fmt.Println("⚠ " + w.errorMsg)
-		// 不阻止初始化，可能只是语言包未安装
+		fmt.Println("⚠ Windows OCR: " + w.errorMsg)
+		fmt.Println("  提示: 如果 OCR 功能不可用，请安装 Windows 语言包（中文或英文）")
+		// 不阻止初始化，可能只是语言包未安装，但 OCR 功能本身可能还是可用的
+		// 在实际调用时再判断是否真的可用
 	}
 
 	w.available = true

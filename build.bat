@@ -54,7 +54,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [3/4] 构建应用...
+echo [3/4] 启用 CGO（WeChatOCR 需要）...
+set CGO_ENABLED=1
+
+echo [4/5] 构建应用...
 wails build -clean
 if %errorlevel% neq 0 (
     echo [错误] 构建失败
