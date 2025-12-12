@@ -22,6 +22,35 @@ const elements = {
 // 当前配置
 let currentConfig = {};
 
+function setTranslationUIEnabled(enabled) {
+    const section = document.getElementById('translationSection');
+    const apiSection = document.getElementById('apiSection');
+
+    if (section) {
+        section.classList.toggle('is-disabled', !enabled);
+    }
+
+    const toToggle = [
+        elements.targetLang,
+        elements.secretId,
+        elements.secretKey,
+        apiSection,
+    ];
+
+    toToggle.forEach((el) => {
+        if (!el) return;
+
+        if (el instanceof HTMLElement && el.tagName === 'DIV') {
+            el.classList.toggle('is-disabled', !enabled);
+            return;
+        }
+
+        if ('disabled' in el) {
+            el.disabled = !enabled;
+        }
+    });
+}
+
 // 初始化
 async function init() {
     // 加载配置
@@ -62,6 +91,8 @@ function applyConfigToUI(config) {
     elements.targetLang.value = config.translation_target || 'zh';
     elements.secretId.value = config.tencent_secret_id || '';
     elements.secretKey.value = config.tencent_secret_key || '';
+
+    setTranslationUIEnabled(elements.enableTranslation.checked);
 
     // 其他选项
     elements.autoCopy.checked = config.auto_copy !== false;

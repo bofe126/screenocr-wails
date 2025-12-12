@@ -9,103 +9,139 @@
 <body>
     <div id="app">
         <header class="header">
-            <h1>ScreenOCR 设置</h1>
-            <p class="subtitle">屏幕文字识别工具</p>
+            <div class="header-content">
+                <div class="header-title">
+                    <h1>ScreenOCR 设置</h1>
+                    <p class="subtitle">屏幕文字识别工具</p>
+                </div>
+            </div>
         </header>
 
         <main class="main">
-            <!-- 触发延时 -->
-            <section class="setting-section">
-                <label class="setting-label">触发延时 (ms)</label>
-                <div class="slider-container">
-                    <input type="range" id="delaySlider" min="0" max="1000" step="50" value="300">
-                    <span id="delayValue" class="slider-value">300 ms</span>
-                </div>
-            </section>
+            <section class="setting-group">
+                <div class="group-title">基础</div>
 
-            <!-- 快捷键 -->
-            <section class="setting-section">
-                <label class="setting-label">触发快捷键</label>
-                <button id="hotkeyBtn" class="hotkey-btn">ALT</button>
-                <p class="hint">点击按钮后按下新的快捷键</p>
-            </section>
-
-            <hr class="divider">
-
-            <!-- OCR 引擎 -->
-            <section class="setting-section">
-                <label class="setting-label">OCR 引擎</label>
-                <div class="radio-group">
-                    <label class="radio-item">
-                        <input type="radio" name="ocrEngine" value="windows" checked>
-                        <span>Windows OCR (系统自带，推荐)</span>
-                    </label>
-                    <label class="radio-item">
-                        <input type="radio" name="ocrEngine" value="wechat">
-                        <span>微信 OCR (需安装微信)</span>
-                    </label>
-                </div>
-            </section>
-
-            <hr class="divider">
-
-            <!-- 翻译设置 -->
-            <section class="setting-section">
-                <label class="setting-label">翻译设置</label>
-                
-                <label class="toggle-item">
-                    <input type="checkbox" id="enableTranslation" checked>
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">启用选中文字翻译</span>
-                </label>
-
-                <div class="form-row">
-                    <label>翻译为:</label>
-                    <select id="targetLang">
-                        <option value="zh">中文</option>
-                        <option value="en">英语</option>
-                        <option value="ja">日语</option>
-                        <option value="ko">韩语</option>
-                        <option value="fr">法语</option>
-                        <option value="de">德语</option>
-                    </select>
-                </div>
-
-                <div class="api-section">
-                    <p class="api-hint">腾讯云 API 密钥 (翻译功能需要)</p>
-                    <div class="form-row">
-                        <label>SecretId:</label>
-                        <input type="text" id="secretId" placeholder="请输入 SecretId">
+                <!-- 触发延时 -->
+                <section class="setting-section setting-card">
+                    <div class="setting-head">
+                        <label class="setting-label" for="delaySlider">触发延时</label>
+                        <span class="setting-meta">单位: ms</span>
                     </div>
-                    <div class="form-row">
-                        <label>SecretKey:</label>
-                        <input type="password" id="secretKey" placeholder="请输入 SecretKey">
+                    <div class="slider-container">
+                        <input type="range" id="delaySlider" min="0" max="1000" step="50" value="300">
+                        <span id="delayValue" class="slider-value">300 ms</span>
                     </div>
-                    <a href="#" id="apiLink" class="api-link">💡 在腾讯云控制台获取</a>
-                </div>
+                </section>
+
+                <!-- 快捷键 -->
+                <section class="setting-section setting-card">
+                    <div class="setting-head">
+                        <label class="setting-label">触发快捷键</label>
+                        <span class="setting-meta">点击后按下新组合键</span>
+                    </div>
+                    <div class="row">
+                        <button id="hotkeyBtn" class="hotkey-btn">ALT</button>
+                    </div>
+                    <p class="hint">点击按钮后按下新的快捷键</p>
+                </section>
             </section>
 
             <hr class="divider">
 
-            <!-- 其他选项 -->
-            <section class="setting-section">
-                <label class="toggle-item">
-                    <input type="checkbox" id="autoCopy" checked>
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">自动复制选中文本</span>
-                </label>
+            <section class="setting-group">
+                <div class="group-title">识别</div>
 
-                <label class="toggle-item">
-                    <input type="checkbox" id="imagePreprocess">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">图像预处理 (增强对比度)</span>
-                </label>
+                <!-- OCR 引擎 -->
+                <section class="setting-section setting-card">
+                    <div class="setting-head">
+                        <label class="setting-label">OCR 引擎</label>
+                        <span class="setting-meta">影响识别速度与准确率</span>
+                    </div>
+                    <div class="radio-group">
+                        <label class="radio-item">
+                            <input type="radio" name="ocrEngine" value="windows" checked>
+                            <span>Windows OCR (系统自带，推荐)</span>
+                        </label>
+                        <label class="radio-item">
+                            <input type="radio" name="ocrEngine" value="wechat">
+                            <span>微信 OCR (需安装微信)</span>
+                        </label>
+                    </div>
+                </section>
+            </section>
 
-                <label class="toggle-item">
-                    <input type="checkbox" id="showDebug">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">显示调试信息</span>
-                </label>
+            <hr class="divider">
+
+            <section class="setting-group">
+                <div class="group-title">翻译</div>
+
+                <!-- 翻译设置 -->
+                <section class="setting-section setting-card" id="translationSection">
+                    <div class="setting-head">
+                        <label class="setting-label">翻译设置</label>
+                        <span class="setting-meta">选中文本后自动翻译</span>
+                    </div>
+                    
+                    <label class="toggle-item">
+                        <input type="checkbox" id="enableTranslation" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-text">启用选中文字翻译</span>
+                    </label>
+
+                    <div class="form-row">
+                        <label>翻译为:</label>
+                        <select id="targetLang">
+                            <option value="zh">中文</option>
+                            <option value="en">英语</option>
+                            <option value="ja">日语</option>
+                            <option value="ko">韩语</option>
+                            <option value="fr">法语</option>
+                            <option value="de">德语</option>
+                        </select>
+                    </div>
+
+                    <div class="api-section" id="apiSection">
+                        <p class="api-hint">腾讯云 API 密钥 (翻译功能需要)</p>
+                        <div class="form-row">
+                            <label>SecretId:</label>
+                            <input type="text" id="secretId" placeholder="请输入 SecretId">
+                        </div>
+                        <div class="form-row">
+                            <label>SecretKey:</label>
+                            <input type="password" id="secretKey" placeholder="请输入 SecretKey">
+                        </div>
+                        <a href="#" id="apiLink" class="api-link">💡 在腾讯云控制台获取</a>
+                    </div>
+                </section>
+            </section>
+
+            <hr class="divider">
+
+            <section class="setting-group">
+                <div class="group-title">其他</div>
+
+                <!-- 其他选项 -->
+                <section class="setting-section setting-card">
+                    <div class="stack">
+                        <label class="toggle-item">
+                            <input type="checkbox" id="autoCopy" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">自动复制选中文本</span>
+                        </label>
+
+                        <label class="toggle-item">
+                            <input type="checkbox" id="imagePreprocess">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">图像预处理 (增强对比度)</span>
+                        </label>
+
+                        <label class="toggle-item">
+                            <input type="checkbox" id="showDebug">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text">显示调试信息</span>
+                        </label>
+                    </div>
+                </section>
             </section>
         </main>
 

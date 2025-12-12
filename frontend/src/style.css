@@ -63,6 +63,21 @@ body {
 .main {
     flex: 1;
     overflow-y: auto;
+    padding-bottom: 12px;
+}
+
+/* 分组 */
+.setting-group {
+    margin-bottom: 16px;
+}
+
+.group-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 6px 2px 10px;
 }
 
 /* 设置区块 */
@@ -71,6 +86,25 @@ body {
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.setting-card {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+
+.setting-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.setting-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .setting-label {
@@ -78,7 +112,19 @@ body {
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
-    margin-bottom: 10px;
+    margin-bottom: 0;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 /* 滑块 */
@@ -94,6 +140,7 @@ input[type="range"] {
     border-radius: 3px;
     background: var(--bg-tertiary);
     outline: none;
+    appearance: none;
     -webkit-appearance: none;
 }
 
@@ -297,7 +344,43 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .footer {
     display: flex;
     gap: 10px;
-    padding: 20px 0;
+    padding: 12px 0 0;
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(
+        to top,
+        rgba(15, 15, 26, 0.98),
+        rgba(15, 15, 26, 0.75),
+        rgba(15, 15, 26, 0)
+    );
+    backdrop-filter: blur(8px);
+}
+
+.footer::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.footer > * {
+    position: relative;
+}
+
+/* 禁用态 */
+.is-disabled {
+    opacity: 0.55;
+    filter: grayscale(0.15);
+}
+
+.is-disabled input:not(#enableTranslation),
+.is-disabled select,
+.is-disabled button,
+.is-disabled a {
+    pointer-events: none;
 }
 
 .btn {
