@@ -4,7 +4,7 @@ package ocr
 
 /*
 #cgo windows CFLAGS: -I.
-#cgo windows LDFLAGS: -L${SRCDIR}/../../assets/libs -lwcocr -lprotobuf-lite -lstdc++ -lws2_32 -lole32 -loleaut32 -luuid -lshlwapi -ladvapi32
+#cgo windows LDFLAGS: -L${SRCDIR}/../../assets/libs -lwcocr -lprotobuf-lite -lstdc++ -lws2_32 -lole32 -loleaut32 -luuid -lshlwapi -ladvapi32 -static
 
 #include <stdlib.h>
 #include <string.h>
