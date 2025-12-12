@@ -28,6 +28,9 @@ type WelcomePage struct {
 
 	// 自定义复选框状态
 	checkboxChecked bool
+
+	// DPI 缩放
+	dpiScale float64
 }
 
 // 全局实例
@@ -102,6 +105,7 @@ func (w *WelcomePage) handleShow(hotkey string) {
 	globalWelcome = w
 	w.hotkey = hotkey
 	w.checkboxChecked = false
+	w.dpiScale = w.getDPIScale()
 
 	if w.hwnd == 0 {
 		w.createWindow()
@@ -109,6 +113,27 @@ func (w *WelcomePage) handleShow(hotkey string) {
 		procShowWindow.Call(w.hwnd, SW_SHOW)
 		procSetForegroundWindow.Call(w.hwnd)
 	}
+}
+
+// getDPIScale 获取 DPI 缩放比例
+func (w *WelcomePage) getDPIScale() float64 {
+	hdc, _, _ := procGetDC.Call(0)
+	if hdc == 0 {
+		return 1.0
+	}
+	defer procReleaseDC.Call(0, hdc)
+
+	// LOGPIXELSX = 88
+	dpi, _, _ := procGetDeviceCaps.Call(hdc, 88)
+	if dpi == 0 {
+		return 1.0
+	}
+	return float64(dpi) / 96.0
+}
+
+// scale 根据 DPI 缩放像素值
+func (w *WelcomePage) scale(px int) int32 {
+	return int32(float64(px) * w.dpiScale)
 }
 
 func (w *WelcomePage) handleHide(openSettings bool) {
@@ -153,9 +178,9 @@ func (w *WelcomePage) createWindow() error {
 
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
-	// 窗口尺寸
-	windowWidth := 480
-	windowHeight := 420
+	// 窗口尺寸（根据 DPI 缩放）
+	windowWidth := int(w.scale(480))
+	windowHeight := int(w.scale(420))
 
 	// 居中显示
 	screenWidth, _, _ := procGetSystemMetrics.Call(SM_CXSCREEN)
@@ -207,33 +232,33 @@ func welcomeWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		x := int32(lParam & 0xFFFF)
 		y := int32((lParam >> 16) & 0xFFFF)
 
-		// 关闭按钮区域 (窗口右上角，450-480, 0-30)
-		if x >= 450 && x <= 480 && y >= 0 && y <= 30 {
+		// 关闭按钮区域 (窗口右上角，450-480, 0-30) - DPI 缩放
+		if x >= w.scale(450) && x <= w.scale(480) && y >= 0 && y <= w.scale(30) {
 			w.handleHide(false)
 			return 0
 		}
 
 		// 标题栏区域 (0-450, 0-30) - 支持拖动
-		if y >= 0 && y <= 30 && x < 450 {
+		if y >= 0 && y <= w.scale(30) && x < w.scale(450) {
 			procReleaseCapture.Call()
 			procPostMessageW.Call(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)
 			return 0
 		}
 
 		// "最小化到托盘" 按钮区域 (30, 340, 220, 378)
-		if x >= 30 && x <= 220 && y >= 340 && y <= 378 {
+		if x >= w.scale(30) && x <= w.scale(220) && y >= w.scale(340) && y <= w.scale(378) {
 			w.handleHide(false)
 			return 0
 		}
 
 		// "详细设置" 按钮区域 (250, 340, 440, 378)
-		if x >= 250 && x <= 440 && y >= 340 && y <= 378 {
+		if x >= w.scale(250) && x <= w.scale(440) && y >= w.scale(340) && y <= w.scale(378) {
 			w.handleHide(true)
 			return 0
 		}
 
 		// 复选框区域 (30, 390, 250, 415)
-		if x >= 30 && x <= 250 && y >= 390 && y <= 415 {
+		if x >= w.scale(30) && x <= w.scale(250) && y >= w.scale(390) && y <= w.scale(415) {
 			w.checkboxChecked = !w.checkboxChecked
 			fmt.Printf("[Welcome] 复选框点击，新状态=%v\n", w.checkboxChecked)
 			// 重绘窗口
@@ -271,51 +296,51 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	hdc, _, _ := procBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 	defer procEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 
-	width := 480
-	height := 420
+	width := w.scale(480)
+	height := w.scale(420)
 
 	// 颜色 (BGR) - 更高对比度的配色
-	colorBg := uint32(0x1A1A1A)          // #1a1a1a 更深的背景
-	colorAccent := uint32(0xFF7B5C)      // #5c7bff 蓝紫色
-	colorTitle := uint32(0xFFFFFF)       // #ffffff 白色标题
-	colorText := uint32(0xE0E0E0)        // #e0e0e0 亮灰色文字
-	colorSubtext := uint32(0xA0A0A0)     // #a0a0a0 次要文字
-	colorHighlight := uint32(0x7BFF5C)   // #5cff7b 亮绿色
-	colorOrange := uint32(0x5CA0FF)      // #ffa05c 橙色（翻译功能）
-	colorBtnBg := uint32(0xFF7B5C)       // #5c7bff 按钮背景
-	colorBtnText := uint32(0xFFFFFF)     // #ffffff 按钮文字
-	colorCardBg := uint32(0x2A2A2A)      // #2a2a2a 卡片背景
+	colorBg := uint32(0x1A1A1A)        // #1a1a1a 更深的背景
+	colorAccent := uint32(0xFF7B5C)    // #5c7bff 蓝紫色
+	colorTitle := uint32(0xFFFFFF)     // #ffffff 白色标题
+	colorText := uint32(0xE0E0E0)      // #e0e0e0 亮灰色文字
+	colorSubtext := uint32(0xA0A0A0)   // #a0a0a0 次要文字
+	colorHighlight := uint32(0x7BFF5C) // #5cff7b 亮绿色
+	colorOrange := uint32(0x5CA0FF)    // #ffa05c 橙色（翻译功能）
+	colorBtnBg := uint32(0xFF7B5C)     // #5c7bff 按钮背景
+	colorBtnText := uint32(0xFFFFFF)   // #ffffff 按钮文字
+	colorCardBg := uint32(0x2A2A2A)    // #2a2a2a 卡片背景
 
 	// 绘制背景
 	bgBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorBg))
-	rect := RECT{0, 0, int32(width), int32(height)}
+	rect := RECT{0, 0, width, height}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&rect)), bgBrush)
 	procDeleteObject.Call(bgBrush)
 
 	// ========== 标题栏区域 ==========
 	titleBarBrush, _, _ := procCreateSolidBrush.Call(uintptr(0x252525)) // 稍深的标题栏
-	titleBarRect := RECT{0, 0, int32(width), 30}
+	titleBarRect := RECT{0, 0, width, w.scale(30)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&titleBarRect)), titleBarBrush)
 	procDeleteObject.Call(titleBarBrush)
 
 	// 顶部强调线
 	accentBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorAccent))
-	accentRect := RECT{0, 0, int32(width), 3}
+	accentRect := RECT{0, 0, width, w.scale(3)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&accentRect)), accentBrush)
 	procDeleteObject.Call(accentBrush)
 
 	// 关闭按钮 (X)
 	closeBtnBrush, _, _ := procCreateSolidBrush.Call(uintptr(0x4040FF)) // 红色背景
-	closeBtnRect := RECT{int32(width - 30), 0, int32(width), 30}
+	closeBtnRect := RECT{width - w.scale(30), 0, width, w.scale(30)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&closeBtnRect)), closeBtnBrush)
 	procDeleteObject.Call(closeBtnBrush)
 
 	procSetBkMode.Call(hdc, TRANSPARENT_BK)
 
-	// 创建大标题字体
+	// 创建大标题字体（DPI 缩放）
 	titleFontName, _ := syscall.UTF16PtrFromString("Microsoft YaHei UI")
 	hTitleFont, _, _ := procCreateFontW.Call(
-		uintptr(36), 0, 0, 0, // 大标题 36px
+		uintptr(w.scale(36)), 0, 0, 0, // 大标题 36px
 		700, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -324,7 +349,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建正文字体
 	hTextFont, _, _ := procCreateFontW.Call(
-		uintptr(20), 0, 0, 0, // 正文 20px
+		uintptr(w.scale(20)), 0, 0, 0, // 正文 20px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -333,7 +358,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建粗体小标题字体
 	hBoldFont, _, _ := procCreateFontW.Call(
-		uintptr(20), 0, 0, 0, // 小标题 20px
+		uintptr(w.scale(20)), 0, 0, 0, // 小标题 20px
 		700, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -342,7 +367,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 创建小字体
 	hSmallFont, _, _ := procCreateFontW.Call(
-		uintptr(17), 0, 0, 0, // 小字 17px
+		uintptr(w.scale(17)), 0, 0, 0, // 小字 17px
 		400, 0, 0, 0,
 		1, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(titleFontName)),
@@ -352,7 +377,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// ========== 绘制标题栏文字 ==========
 	procSelectObject.Call(hdc, hSmallFont)
 	procSetTextColor.Call(hdc, uintptr(colorSubtext))
-	titleBarTextRect := RECT{10, 7, int32(width - 40), 25}
+	titleBarTextRect := RECT{w.scale(10), w.scale(7), width - w.scale(40), w.scale(25)}
 	titleBarText := "Screen OCR"
 	titleBarUTF16, _ := syscall.UTF16FromString(titleBarText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&titleBarUTF16[0])), uintptr(len(titleBarUTF16)-1),
@@ -360,7 +385,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// 关闭按钮 X
 	procSetTextColor.Call(hdc, uintptr(colorTitle))
-	closeBtnTextRect := RECT{int32(width - 30), 5, int32(width), 28}
+	closeBtnTextRect := RECT{width - w.scale(30), w.scale(5), width, w.scale(28)}
 	closeText := "×"
 	closeUTF16, _ := syscall.UTF16FromString(closeText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&closeUTF16[0])), uintptr(len(closeUTF16)-1),
@@ -369,7 +394,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// ========== 绘制主标题 ==========
 	procSelectObject.Call(hdc, hTitleFont)
 	procSetTextColor.Call(hdc, uintptr(colorTitle))
-	titleRect := RECT{30, 45, int32(width - 30), 80}
+	titleRect := RECT{w.scale(30), w.scale(45), width - w.scale(30), w.scale(80)}
 	titleText := "欢迎使用 Screen OCR"
 	titleUTF16, _ := syscall.UTF16FromString(titleText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&titleUTF16[0])), uintptr(len(titleUTF16)-1),
@@ -378,7 +403,7 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// 绘制副标题
 	procSelectObject.Call(hdc, hSmallFont)
 	procSetTextColor.Call(hdc, uintptr(colorSubtext))
-	subtitleRect := RECT{30, 77, int32(width - 30), 97}
+	subtitleRect := RECT{w.scale(30), w.scale(77), width - w.scale(30), w.scale(97)}
 	subtitleText := "快速识别屏幕文字，支持翻译功能"
 	subtitleUTF16, _ := syscall.UTF16FromString(subtitleText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&subtitleUTF16[0])), uintptr(len(subtitleUTF16)-1),
@@ -386,13 +411,13 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 
 	// ========== OCR 使用步骤卡片 ==========
 	cardBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorCardBg))
-	ocrCardRect := RECT{20, 105, int32(width - 20), 215}
+	ocrCardRect := RECT{w.scale(20), w.scale(105), width - w.scale(20), w.scale(215)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&ocrCardRect)), cardBrush)
 
 	// OCR 标题
 	procSelectObject.Call(hdc, hBoldFont)
 	procSetTextColor.Call(hdc, uintptr(colorHighlight))
-	ocrTitleRect := RECT{35, 112, int32(width - 35), 132}
+	ocrTitleRect := RECT{w.scale(35), w.scale(112), width - w.scale(35), w.scale(132)}
 	ocrTitleText := "▶ 文字识别"
 	ocrTitleUTF16, _ := syscall.UTF16FromString(ocrTitleText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&ocrTitleUTF16[0])), uintptr(len(ocrTitleUTF16)-1),
@@ -406,24 +431,24 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 		"2. 拖动鼠标选择文字区域",
 		"3. 松开快捷键，文字自动复制到剪贴板",
 	}
-	y := int32(135)
+	y := w.scale(135)
 	for _, step := range ocrSteps {
-		stepRect := RECT{40, y, int32(width - 40), y + 24}
+		stepRect := RECT{w.scale(40), y, width - w.scale(40), y + w.scale(24)}
 		stepUTF16, _ := syscall.UTF16FromString(step)
 		procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&stepUTF16[0])), uintptr(len(stepUTF16)-1),
 			uintptr(unsafe.Pointer(&stepRect)), DT_LEFT|DT_NOPREFIX)
-		y += 26
+		y += w.scale(26)
 	}
 
 	// ========== 翻译功能卡片 ==========
-	transCardRect := RECT{20, 225, int32(width - 20), 320}
+	transCardRect := RECT{w.scale(20), w.scale(225), width - w.scale(20), w.scale(320)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&transCardRect)), cardBrush)
 	procDeleteObject.Call(cardBrush)
 
 	// 翻译标题
 	procSelectObject.Call(hdc, hBoldFont)
 	procSetTextColor.Call(hdc, uintptr(colorOrange))
-	transTitleRect := RECT{35, 232, int32(width - 35), 252}
+	transTitleRect := RECT{w.scale(35), w.scale(232), width - w.scale(35), w.scale(252)}
 	transTitleText := "▶ 翻译功能"
 	transTitleUTF16, _ := syscall.UTF16FromString(transTitleText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&transTitleUTF16[0])), uintptr(len(transTitleUTF16)-1),
@@ -437,25 +462,25 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 		"• 需在设置中配置腾讯云 API 密钥",
 		"• 支持中英日韩法德等多语言互译",
 	}
-	y = int32(255)
+	y = w.scale(255)
 	for _, step := range transSteps {
-		stepRect := RECT{40, y, int32(width - 40), y + 20}
+		stepRect := RECT{w.scale(40), y, width - w.scale(40), y + w.scale(20)}
 		stepUTF16, _ := syscall.UTF16FromString(step)
 		procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&stepUTF16[0])), uintptr(len(stepUTF16)-1),
 			uintptr(unsafe.Pointer(&stepRect)), DT_LEFT|DT_NOPREFIX)
-		y += 21
+		y += w.scale(21)
 	}
 
 	// ========== 按钮区域 ==========
 	// "最小化到托盘" 按钮
 	btnBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorBtnBg))
-	btnRect := RECT{30, 340, 220, 378}
+	btnRect := RECT{w.scale(30), w.scale(340), w.scale(220), w.scale(378)}
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&btnRect)), btnBrush)
 	procDeleteObject.Call(btnBrush)
 
 	procSelectObject.Call(hdc, hBoldFont)
 	procSetTextColor.Call(hdc, uintptr(colorBtnText))
-	btnTextRect := RECT{30, 350, 220, 378}
+	btnTextRect := RECT{w.scale(30), w.scale(350), w.scale(220), w.scale(378)}
 	btnText := "最小化到托盘"
 	btnUTF16, _ := syscall.UTF16FromString(btnText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&btnUTF16[0])), uintptr(len(btnUTF16)-1),
@@ -464,14 +489,14 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// "详细设置" 按钮（边框样式）
 	borderBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorHighlight))
 	// 上下左右边框
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{250, 340, 440, 342})), borderBrush)
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{250, 376, 440, 378})), borderBrush)
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{250, 340, 252, 378})), borderBrush)
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{438, 340, 440, 378})), borderBrush)
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(250), w.scale(340), w.scale(440), w.scale(342)})), borderBrush)
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(250), w.scale(376), w.scale(440), w.scale(378)})), borderBrush)
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(250), w.scale(340), w.scale(252), w.scale(378)})), borderBrush)
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(438), w.scale(340), w.scale(440), w.scale(378)})), borderBrush)
 	procDeleteObject.Call(borderBrush)
 
 	procSetTextColor.Call(hdc, uintptr(colorHighlight))
-	btn2TextRect := RECT{250, 350, 440, 378}
+	btn2TextRect := RECT{w.scale(250), w.scale(350), w.scale(440), w.scale(378)}
 	btn2Text := "详细设置"
 	btn2UTF16, _ := syscall.UTF16FromString(btn2Text)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&btn2UTF16[0])), uintptr(len(btn2UTF16)-1),
@@ -481,26 +506,25 @@ func (w *WelcomePage) onPaint(hwnd uintptr) {
 	// 复选框边框
 	checkboxBorderBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorSubtext))
 	// 外框
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{30, 393, 48, 395})), checkboxBorderBrush) // 上
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{30, 408, 48, 410})), checkboxBorderBrush) // 下
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{30, 393, 32, 410})), checkboxBorderBrush) // 左
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{46, 393, 48, 410})), checkboxBorderBrush) // 右
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(30), w.scale(393), w.scale(48), w.scale(395)})), checkboxBorderBrush) // 上
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(30), w.scale(408), w.scale(48), w.scale(410)})), checkboxBorderBrush) // 下
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(30), w.scale(393), w.scale(32), w.scale(410)})), checkboxBorderBrush) // 左
+	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(46), w.scale(393), w.scale(48), w.scale(410)})), checkboxBorderBrush) // 右
 	procDeleteObject.Call(checkboxBorderBrush)
 
 	// 如果选中，绘制勾选标记
 	if w.checkboxChecked {
 		checkBrush, _, _ := procCreateSolidBrush.Call(uintptr(colorHighlight))
-		procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{34, 397, 44, 406})), checkBrush)
+		procFillRect.Call(hdc, uintptr(unsafe.Pointer(&RECT{w.scale(34), w.scale(397), w.scale(44), w.scale(406)})), checkBrush)
 		procDeleteObject.Call(checkBrush)
 	}
 
 	// 复选框文字
 	procSetTextColor.Call(hdc, uintptr(colorText))
 	procSelectObject.Call(hdc, hSmallFont)
-	checkTextRect := RECT{55, 392, int32(width - 30), 412}
+	checkTextRect := RECT{w.scale(55), w.scale(392), width - w.scale(30), w.scale(412)}
 	checkText := "不再显示此欢迎页面"
 	checkUTF16, _ := syscall.UTF16FromString(checkText)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(&checkUTF16[0])), uintptr(len(checkUTF16)-1),
 		uintptr(unsafe.Pointer(&checkTextRect)), DT_LEFT|DT_NOPREFIX)
 }
-
