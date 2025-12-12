@@ -10,32 +10,32 @@ import (
 )
 
 var (
-	user32   = syscall.NewLazyDLL("user32.dll")
-	gdi32    = syscall.NewLazyDLL("gdi32.dll")
-	shcore   = syscall.NewLazyDLL("shcore.dll")
+	user32 = syscall.NewLazyDLL("user32.dll")
+	gdi32  = syscall.NewLazyDLL("gdi32.dll")
+	shcore = syscall.NewLazyDLL("shcore.dll")
 
-	procGetDC             = user32.NewProc("GetDC")
-	procReleaseDC         = user32.NewProc("ReleaseDC")
-	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
-	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
-	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
-	procSelectObject      = gdi32.NewProc("SelectObject")
-	procBitBlt            = gdi32.NewProc("BitBlt")
-	procDeleteDC          = gdi32.NewProc("DeleteDC")
-	procDeleteObject      = gdi32.NewProc("DeleteObject")
-	procGetDIBits         = gdi32.NewProc("GetDIBits")
+	procGetDC                  = user32.NewProc("GetDC")
+	procReleaseDC              = user32.NewProc("ReleaseDC")
+	procGetSystemMetrics       = user32.NewProc("GetSystemMetrics")
+	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
+	procCreateDIBSection       = gdi32.NewProc("CreateDIBSection")
+	procSelectObject           = gdi32.NewProc("SelectObject")
+	procBitBlt                 = gdi32.NewProc("BitBlt")
+	procDeleteDC               = gdi32.NewProc("DeleteDC")
+	procDeleteObject           = gdi32.NewProc("DeleteObject")
+	procGdiFlush               = gdi32.NewProc("GdiFlush")
 	procSetProcessDpiAwareness = shcore.NewProc("SetProcessDpiAwareness")
 )
 
 const (
-	SM_CXSCREEN = 0
-	SM_CYSCREEN = 1
-	SM_XVIRTUALSCREEN = 76
-	SM_YVIRTUALSCREEN = 77
+	SM_CXSCREEN        = 0
+	SM_CYSCREEN        = 1
+	SM_XVIRTUALSCREEN  = 76
+	SM_YVIRTUALSCREEN  = 77
 	SM_CXVIRTUALSCREEN = 78
 	SM_CYVIRTUALSCREEN = 79
-	SRCCOPY = 0x00CC0020
-	BI_RGB  = 0
+	SRCCOPY            = 0x00CC0020
+	BI_RGB             = 0
 )
 
 // BITMAPINFOHEADER Windows 位图信息头
@@ -95,82 +95,75 @@ func (c *Capturer) CaptureScreen() (image.Image, error) {
 	return c.captureRect(int(x), int(y), int(width), int(height))
 }
 
-// CaptureRect 捕获指定区域
+// CaptureRect 捕获指定区域（使用 CreateDIBSection，兼容 Win10/Win11）
 func (c *Capturer) captureRect(x, y, width, height int) (image.Image, error) {
 	// 获取屏幕 DC
 	hdc, _, _ := procGetDC.Call(0)
 	if hdc == 0 {
 		return nil, fmt.Errorf("获取屏幕 DC 失败")
 	}
-	defer procReleaseDC.Call(0, hdc)
 
 	// 创建兼容 DC
 	hdcMem, _, _ := procCreateCompatibleDC.Call(hdc)
 	if hdcMem == 0 {
+		procReleaseDC.Call(0, hdc)
 		return nil, fmt.Errorf("创建兼容 DC 失败")
 	}
-	defer procDeleteDC.Call(hdcMem)
 
-	// 创建兼容位图
-	hBitmap, _, _ := procCreateCompatibleBitmap.Call(hdc, uintptr(width), uintptr(height))
-	if hBitmap == 0 {
-		return nil, fmt.Errorf("创建兼容位图失败")
-	}
-	defer procDeleteObject.Call(hBitmap)
-
-	// 选择位图到 DC
-	procSelectObject.Call(hdcMem, hBitmap)
-
-	// 复制屏幕内容
-	ret, _, _ := procBitBlt.Call(
-		hdcMem, 0, 0, uintptr(width), uintptr(height),
-		hdc, uintptr(x), uintptr(y),
-		SRCCOPY,
-	)
-	if ret == 0 {
-		return nil, fmt.Errorf("BitBlt 失败")
-	}
-
-	// 获取位图数据
-	return c.bitmapToImage(hdc, hBitmap, width, height)
-}
-
-// bitmapToImage 将 Windows 位图转换为 Go image
-func (c *Capturer) bitmapToImage(hdc, hBitmap uintptr, width, height int) (image.Image, error) {
-	// 准备位图信息
+	// 准备位图信息（使用负高度，从上到下，避免翻转）
 	bi := BITMAPINFO{
 		BmiHeader: BITMAPINFOHEADER{
 			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
 			BiWidth:       int32(width),
-			BiHeight:      -int32(height), // 负值表示从上到下
+			BiHeight:      -int32(height), // 负值 = 从上到下
 			BiPlanes:      1,
 			BiBitCount:    32,
 			BiCompression: BI_RGB,
 		},
 	}
 
-	// 分配缓冲区
-	dataSize := width * height * 4
-	data := make([]byte, dataSize)
-
-	// 获取位图数据
-	ret, _, _ := procGetDIBits.Call(
+	// 创建 DIB Section（直接获取像素指针）
+	var pBits uintptr
+	hBitmap, _, _ := procCreateDIBSection.Call(
 		hdc,
-		hBitmap,
-		0,
-		uintptr(height),
-		uintptr(unsafe.Pointer(&data[0])),
 		uintptr(unsafe.Pointer(&bi)),
 		0, // DIB_RGB_COLORS
+		uintptr(unsafe.Pointer(&pBits)),
+		0,
+		0,
 	)
-	if ret == 0 {
-		return nil, fmt.Errorf("GetDIBits 失败")
+	if hBitmap == 0 || pBits == 0 {
+		procDeleteDC.Call(hdcMem)
+		procReleaseDC.Call(0, hdc)
+		return nil, fmt.Errorf("创建 DIB Section 失败")
 	}
 
-	// 创建 RGBA 图像
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	// 选择位图到内存 DC
+	oldBitmap, _, _ := procSelectObject.Call(hdcMem, hBitmap)
 
-	// 复制数据 (BGRA -> RGBA)
+	// 复制屏幕内容到 DIB
+	ret, _, _ := procBitBlt.Call(
+		hdcMem, 0, 0, uintptr(width), uintptr(height),
+		hdc, uintptr(x), uintptr(y),
+		SRCCOPY,
+	)
+	if ret == 0 {
+		procSelectObject.Call(hdcMem, oldBitmap)
+		procDeleteObject.Call(hBitmap)
+		procDeleteDC.Call(hdcMem)
+		procReleaseDC.Call(0, hdc)
+		return nil, fmt.Errorf("BitBlt 失败")
+	}
+
+	// 确保 GDI 操作完成，数据写入 pBits
+	procGdiFlush.Call()
+
+	// 直接从 pBits 读取像素数据
+	dataSize := width * height * 4
+	data := unsafe.Slice((*byte)(unsafe.Pointer(pBits)), dataSize)
+
+	// 创建 RGBA 图像并复制数据 (BGRA -> RGBA)
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	for i := 0; i < width*height; i++ {
 		offset := i * 4
 		img.Pix[offset+0] = data[offset+2] // R
@@ -178,6 +171,12 @@ func (c *Capturer) bitmapToImage(hdc, hBitmap uintptr, width, height int) (image
 		img.Pix[offset+2] = data[offset+0] // B
 		img.Pix[offset+3] = 255            // A
 	}
+
+	// 清理资源
+	procSelectObject.Call(hdcMem, oldBitmap)
+	procDeleteObject.Call(hBitmap)
+	procDeleteDC.Call(hdcMem)
+	procReleaseDC.Call(0, hdc)
 
 	return img, nil
 }
@@ -188,4 +187,3 @@ func (c *Capturer) GetScreenSize() (width, height int) {
 	h, _, _ := procGetSystemMetrics.Call(SM_CYSCREEN)
 	return int(w), int(h)
 }
-

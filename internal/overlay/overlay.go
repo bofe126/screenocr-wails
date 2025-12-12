@@ -50,15 +50,15 @@ var (
 	procGlobalUnlock               = kernel32.NewProc("GlobalUnlock")
 	procGetModuleHandleW           = kernel32.NewProc("GetModuleHandleW")
 
-	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
-	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
-	procSelectObject           = gdi32.NewProc("SelectObject")
-	procDeleteDC               = gdi32.NewProc("DeleteDC")
-	procDeleteObject           = gdi32.NewProc("DeleteObject")
-	procBitBlt                 = gdi32.NewProc("BitBlt")
-	procCreateSolidBrush       = gdi32.NewProc("CreateSolidBrush")
-	procFillRect               = user32.NewProc("FillRect") // FillRect 在 user32.dll 中
-	procGetDpiForSystem        = user32.NewProc("GetDpiForSystem")
+	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
+	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
+	procSelectObject       = gdi32.NewProc("SelectObject")
+	procDeleteDC           = gdi32.NewProc("DeleteDC")
+	procDeleteObject       = gdi32.NewProc("DeleteObject")
+	procBitBlt             = gdi32.NewProc("BitBlt")
+	procCreateSolidBrush   = gdi32.NewProc("CreateSolidBrush")
+	procFillRect           = user32.NewProc("FillRect") // FillRect 在 user32.dll 中
+	procGetDpiForSystem    = user32.NewProc("GetDpiForSystem")
 )
 
 // 系统 DPI 缓存
@@ -106,17 +106,16 @@ func ScaleForDPI(value int) int {
 }
 
 var (
-	procGetDC         = user32.NewProc("GetDC")
-	procReleaseDC     = user32.NewProc("ReleaseDC")
-	procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
-	procCreatePen              = gdi32.NewProc("CreatePen")
-	procRectangle              = gdi32.NewProc("Rectangle")
-	procSetBkMode              = gdi32.NewProc("SetBkMode")
-	procTextOutW               = gdi32.NewProc("TextOutW")
-	procSetTextColor           = gdi32.NewProc("SetTextColor")
-	procGetStockObject         = gdi32.NewProc("GetStockObject")
-	procCreateFontW            = gdi32.NewProc("CreateFontW")
-	procSetDIBitsToDevice      = gdi32.NewProc("SetDIBitsToDevice")
+	procGetDC          = user32.NewProc("GetDC")
+	procReleaseDC      = user32.NewProc("ReleaseDC")
+	procGetDeviceCaps  = gdi32.NewProc("GetDeviceCaps")
+	procCreatePen      = gdi32.NewProc("CreatePen")
+	procRectangle      = gdi32.NewProc("Rectangle")
+	procSetBkMode      = gdi32.NewProc("SetBkMode")
+	procTextOutW       = gdi32.NewProc("TextOutW")
+	procSetTextColor   = gdi32.NewProc("SetTextColor")
+	procGetStockObject = gdi32.NewProc("GetStockObject")
+	procCreateFontW    = gdi32.NewProc("CreateFontW")
 )
 
 const (
@@ -142,8 +141,12 @@ const (
 	WM_LBUTTONUP   = 0x0202
 	WM_MOUSEMOVE   = 0x0200
 
-	SM_CXSCREEN = 0
-	SM_CYSCREEN = 1
+	SM_CXSCREEN        = 0
+	SM_CYSCREEN        = 1
+	SM_XVIRTUALSCREEN  = 76
+	SM_YVIRTUALSCREEN  = 77
+	SM_CXVIRTUALSCREEN = 78
+	SM_CYVIRTUALSCREEN = 79
 
 	LWA_ALPHA = 0x02
 
@@ -170,7 +173,7 @@ const (
 	COLOR_BORDER_READY   = 0x00FF00 // 绿色边框 #00FF00 (BGR)
 	COLOR_OVERLAY_WAIT   = 0x000000 // 等待时的遮罩颜色（黑色）
 	COLOR_OVERLAY_READY  = 0xFFFFFF // 就绪时的遮罩颜色（白色）
-	
+
 	// 透明度 (与 Python 版本一致)
 	ALPHA_WAITING = 180 // 等待时 ~70% 不透明
 	ALPHA_READY   = 100 // 完成时 ~39% 不透明
@@ -256,7 +259,7 @@ type Overlay struct {
 	screenHeight int
 
 	// 显示状态
-	screenshot *image.RGBA   // 截图
+	screenshot *image.RGBA // 截图
 	textBlocks []ocr.TextBlock
 	isReady    bool // OCR 是否完成
 
@@ -276,8 +279,9 @@ type Overlay struct {
 	OnClose        func()
 
 	// 光标
-	cursorArrow uintptr
-	cursorIBeam uintptr
+	cursorArrow   uintptr
+	cursorIBeam   uintptr
+	currentCursor uintptr
 
 	// 窗口线程通信
 	showChan   chan showRequest
@@ -351,6 +355,7 @@ func (o *Overlay) windowThread() {
 	// 在窗口线程中加载光标
 	o.cursorArrow, _, _ = procLoadCursorW.Call(0, IDC_ARROW)
 	o.cursorIBeam, _, _ = procLoadCursorW.Call(0, IDC_IBEAM)
+	o.currentCursor = o.cursorArrow
 
 	o.running = true
 
@@ -390,11 +395,17 @@ func (o *Overlay) handleShow(screenshot image.Image, textBlocks []ocr.TextBlock)
 	o.mu.Lock()
 	// 保存截图为 RGBA 格式
 	if screenshot != nil {
-		bounds := screenshot.Bounds()
-		o.screenshot = image.NewRGBA(bounds)
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				o.screenshot.Set(x, y, screenshot.At(x, y))
+		// 尝试直接使用 RGBA 类型
+		if rgba, ok := screenshot.(*image.RGBA); ok {
+			o.screenshot = rgba
+		} else {
+			// 需要转换
+			bounds := screenshot.Bounds()
+			o.screenshot = image.NewRGBA(bounds)
+			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+				for x := bounds.Min.X; x < bounds.Max.X; x++ {
+					o.screenshot.Set(x, y, screenshot.At(x, y))
+				}
 			}
 		}
 	}
@@ -461,9 +472,19 @@ func (o *Overlay) handleClose() {
 func (o *Overlay) createWindow() error {
 	globalOverlay = o
 
-	// 获取屏幕尺寸
-	sw, _, _ := procGetSystemMetrics.Call(SM_CXSCREEN)
-	sh, _, _ := procGetSystemMetrics.Call(SM_CYSCREEN)
+	// 获取虚拟屏幕尺寸（支持多显示器，与截图保持一致）
+	sx, _, _ := procGetSystemMetrics.Call(SM_XVIRTUALSCREEN)
+	sy, _, _ := procGetSystemMetrics.Call(SM_YVIRTUALSCREEN)
+	sw, _, _ := procGetSystemMetrics.Call(SM_CXVIRTUALSCREEN)
+	sh, _, _ := procGetSystemMetrics.Call(SM_CYVIRTUALSCREEN)
+
+	// 如果虚拟屏幕尺寸为 0，回退到主屏幕
+	if sw == 0 || sh == 0 {
+		sw, _, _ = procGetSystemMetrics.Call(SM_CXSCREEN)
+		sh, _, _ = procGetSystemMetrics.Call(SM_CYSCREEN)
+		sx, sy = 0, 0
+	}
+
 	o.screenWidth = int(sw)
 	o.screenHeight = int(sh)
 
@@ -485,13 +506,13 @@ func (o *Overlay) createWindow() error {
 
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
-	// 创建窗口 - 使用半透明窗口（移除 WS_EX_NOACTIVATE 以接收鼠标事件）
+	// 创建窗口 - 使用半透明窗口，位置和尺寸与虚拟屏幕一致
 	hwnd, _, err := procCreateWindowExW.Call(
 		WS_EX_LAYERED|WS_EX_TOPMOST|WS_EX_TOOLWINDOW,
 		uintptr(unsafe.Pointer(className)),
 		0,
 		WS_POPUP|WS_VISIBLE,
-		0, 0,
+		sx, sy,
 		sw, sh,
 		0, 0,
 		o.hInstance,
@@ -578,14 +599,45 @@ func (o *Overlay) onPaint(hwnd uintptr) {
 	memDC, _, _ := procCreateCompatibleDC.Call(hdc)
 	defer procDeleteDC.Call(memDC)
 
-	hBitmap, _, _ := procCreateCompatibleBitmap.Call(hdc, uintptr(width), uintptr(height))
+	// 使用 DIBSection 作为后备位图，避免 StretchDIBits/SetDIBitsToDevice 在某些 DC 上失败
+	bi := BITMAPINFO{
+		BmiHeader: BITMAPINFOHEADER{
+			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+			BiWidth:       int32(width),
+			BiHeight:      int32(height), // 正值：自底向上，与当前缓存格式一致
+			BiPlanes:      1,
+			BiBitCount:    32,
+			BiCompression: BI_RGB,
+		},
+	}
+	var pBits uintptr
+	hBitmap, _, _ := procCreateDIBSection.Call(
+		hdc,
+		uintptr(unsafe.Pointer(&bi)),
+		DIB_RGB_COLORS,
+		uintptr(unsafe.Pointer(&pBits)),
+		0,
+		0,
+	)
+	if hBitmap == 0 || pBits == 0 {
+		return
+	}
 	defer procDeleteObject.Call(hBitmap)
-
 	procSelectObject.Call(memDC, hBitmap)
 
 	// 绘制截图 + 遮罩 + 高亮混合后的图像（与 Python alpha_composite 一致）
 	if screenshot != nil {
-		o.drawScreenshotWithOverlay(memDC, screenshot, width, height, isReady, textBlocks, selectedBlocks)
+		// 直接写入 DIBSection 的像素内存
+		bounds := screenshot.Bounds()
+		imgWidth := bounds.Dx()
+		imgHeight := bounds.Dy()
+		if imgWidth > 0 && imgHeight > 0 {
+			dataSize := imgWidth * imgHeight * 4
+			if dataSize > 0 {
+				dst := unsafe.Slice((*byte)(unsafe.Pointer(pBits)), dataSize)
+				o.drawScreenshotWithOverlay(dst, screenshot, width, height, isReady, textBlocks, selectedBlocks)
+			}
+		}
 	} else {
 		// 如果没有截图，绘制纯色背景
 		var bgColor uint32
@@ -619,11 +671,31 @@ func (o *Overlay) onPaint(hwnd uintptr) {
 
 // drawScreenshotWithOverlay 绘制截图并叠加遮罩层和高亮层（与 Python alpha_composite 一致）
 // 优化：截图+遮罩只计算一次并缓存，高亮只处理选中区域的像素
-func (o *Overlay) drawScreenshotWithOverlay(hdc uintptr, screenshot *image.RGBA, width, height int, isReady bool, textBlocks []ocr.TextBlock, selectedBlocks []int) {
+func (o *Overlay) drawScreenshotWithOverlay(pixelData []byte, screenshot *image.RGBA, width, height int, isReady bool, textBlocks []ocr.TextBlock, selectedBlocks []int) {
 	bounds := screenshot.Bounds()
 	imgWidth := bounds.Dx()
 	imgHeight := bounds.Dy()
+
+	// 安全检查：确保图像尺寸有效
+	if imgWidth <= 0 || imgHeight <= 0 {
+		fmt.Printf("[Overlay] 错误: 图像尺寸无效 %dx%d\n", imgWidth, imgHeight)
+		return
+	}
+
+	// 检查 Stride 是否合理
+	expectedStride := imgWidth * 4
+	if screenshot.Stride < expectedStride {
+		fmt.Printf("[Overlay] 错误: Stride=%d 小于预期 %d\n", screenshot.Stride, expectedStride)
+		return
+	}
+
 	dataSize := imgWidth * imgHeight * 4
+	if len(pixelData) != dataSize {
+		return
+	}
+
+	fmt.Printf("[Overlay] drawScreenshot: 窗口=%dx%d, 图像=%dx%d, Stride=%d, Pix=%d\n",
+		width, height, imgWidth, imgHeight, screenshot.Stride, len(screenshot.Pix))
 
 	// 检查是否需要重新计算背景缓存
 	o.mu.Lock()
@@ -632,12 +704,15 @@ func (o *Overlay) drawScreenshotWithOverlay(hdc uintptr, screenshot *image.RGBA,
 
 	if needRecalc {
 		// 计算截图+遮罩混合（只在状态变化时计算一次）
-		o.calculateBackground(screenshot, imgWidth, imgHeight, isReady)
+		o.calculateBackground(screenshot, imgWidth, imgHeight, screenshot.Stride, isReady)
 	}
 
 	// 复制缓存的背景
 	o.mu.RLock()
-	pixelData := make([]byte, dataSize)
+	if len(o.cachedBackground) != dataSize {
+		o.mu.RUnlock()
+		return
+	}
 	copy(pixelData, o.cachedBackground)
 	o.mu.RUnlock()
 
@@ -646,35 +721,25 @@ func (o *Overlay) drawScreenshotWithOverlay(hdc uintptr, screenshot *image.RGBA,
 		o.applyHighlight(pixelData, imgWidth, imgHeight, textBlocks, selectedBlocks)
 	}
 
-	// 准备位图信息
-	bi := BITMAPINFO{
-		BmiHeader: BITMAPINFOHEADER{
-			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-			BiWidth:       int32(imgWidth),
-			BiHeight:      int32(imgHeight), // 正值表示自底向上
-			BiPlanes:      1,
-			BiBitCount:    32,
-			BiCompression: BI_RGB,
-		},
-	}
-
-	// 绘制到 DC
-	procSetDIBitsToDevice.Call(
-		hdc,
-		0, 0,                              // 目标位置
-		uintptr(imgWidth), uintptr(imgHeight), // 尺寸
-		0, 0,                              // 源位置
-		0, uintptr(imgHeight),             // 起始行，行数
-		uintptr(unsafe.Pointer(&pixelData[0])),
-		uintptr(unsafe.Pointer(&bi)),
-		DIB_RGB_COLORS,
-	)
+	// 注意：此处不直接调用 StretchDIBits/SetDIBitsToDevice，像素会写入 DIBSection，再由上层 BitBlt 到窗口
 }
 
 // calculateBackground 计算截图+遮罩混合结果并缓存（只在状态变化时调用一次）
-func (o *Overlay) calculateBackground(screenshot *image.RGBA, imgWidth, imgHeight int, isReady bool) {
+func (o *Overlay) calculateBackground(screenshot *image.RGBA, imgWidth, imgHeight, stride int, isReady bool) {
 	dataSize := imgWidth * imgHeight * 4
 	background := make([]byte, dataSize)
+
+	pixLen := len(screenshot.Pix)
+
+	// 调试：检查截图数据
+	fmt.Printf("[Overlay] 计算背景: 图像尺寸=%dx%d, Stride=%d, Pix长度=%d, 预期最小=%d\n",
+		imgWidth, imgHeight, stride, pixLen, (imgHeight-1)*stride+imgWidth*4)
+
+	// 安全检查：确保 Pix 数据足够
+	if pixLen < imgHeight*stride {
+		fmt.Printf("[Overlay] 错误: Pix 数据不足! 需要 %d, 实际 %d\n", imgHeight*stride, pixLen)
+		return
+	}
 
 	// 遮罩参数 - 与 Python 保持一致
 	var overlayR, overlayG, overlayB, overlayA uint8
@@ -687,9 +752,17 @@ func (o *Overlay) calculateBackground(screenshot *image.RGBA, imgWidth, imgHeigh
 	alpha := float64(overlayA) / 255.0
 	invAlpha := 1.0 - alpha
 
+	// 截图已经是从上到下的顺序（负高度 DIB），但 SetDIBitsToDevice 需要自底向上
 	for y := 0; y < imgHeight; y++ {
 		for x := 0; x < imgWidth; x++ {
-			srcIdx := (y*imgWidth + x) * 4
+			// 使用 Stride 计算源索引
+			srcIdx := y*stride + x*4
+
+			// 边界检查: srcIdx+3 是最后一个访问的索引，必须 < pixLen
+			if srcIdx < 0 || srcIdx+4 > pixLen {
+				continue
+			}
+
 			srcR := screenshot.Pix[srcIdx+0]
 			srcG := screenshot.Pix[srcIdx+1]
 			srcB := screenshot.Pix[srcIdx+2]
@@ -698,9 +771,15 @@ func (o *Overlay) calculateBackground(screenshot *image.RGBA, imgWidth, imgHeigh
 			g := uint8(float64(srcG)*invAlpha + float64(overlayG)*alpha)
 			b := uint8(float64(srcB)*invAlpha + float64(overlayB)*alpha)
 
-			// BGRA 格式，自底向上
+			// BGRA 格式，自底向上（SetDIBitsToDevice 使用正高度需要翻转）
 			dstY := imgHeight - 1 - y
 			dstIdx := (dstY*imgWidth + x) * 4
+
+			// 边界检查: dstIdx+3 是最后一个访问的索引，必须 < dataSize
+			if dstIdx < 0 || dstIdx+4 > dataSize {
+				continue
+			}
+
 			background[dstIdx+0] = b
 			background[dstIdx+1] = g
 			background[dstIdx+2] = r
@@ -749,10 +828,19 @@ func (o *Overlay) applyHighlight(pixelData []byte, imgWidth, imgHeight int, text
 		}
 
 		// 只处理这个矩形区域的像素
+		dataLen := len(pixelData)
 		for y := y1; y < y2; y++ {
 			dstY := imgHeight - 1 - y // BGRA 自底向上
+			if dstY < 0 || dstY >= imgHeight {
+				continue
+			}
 			for x := x1; x < x2; x++ {
 				dstIdx := (dstY*imgWidth + x) * 4
+
+				// 边界检查: 访问 dstIdx+0,1,2,3，所以需要 dstIdx+4 <= dataLen
+				if dstIdx < 0 || dstIdx+4 > dataLen {
+					continue
+				}
 
 				// 读取当前像素 (BGR)
 				b := pixelData[dstIdx+0]
@@ -777,8 +865,8 @@ func (o *Overlay) drawWaitingText(hdc uintptr, width, height int) {
 		400, 0, 0, 0, // 正常粗细
 		1,    // DEFAULT_CHARSET
 		0, 0, // OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS
-		0,    // DEFAULT_QUALITY
-		0,    // DEFAULT_PITCH
+		0, // DEFAULT_QUALITY
+		0, // DEFAULT_PITCH
 		uintptr(unsafe.Pointer(fontName)),
 	)
 	defer procDeleteObject.Call(hFont)
@@ -795,8 +883,8 @@ func (o *Overlay) drawWaitingText(hdc uintptr, width, height int) {
 	textUTF16, _ := syscall.UTF16FromString(text)
 
 	// 计算大致中心位置
-	centerX := width / 2 - 100 // 大约文字宽度的一半
-	centerY := height / 2 - 16 // 大约文字高度的一半
+	centerX := width/2 - 100 // 大约文字宽度的一半
+	centerY := height/2 - 16 // 大约文字高度的一半
 
 	procTextOutW.Call(hdc,
 		uintptr(centerX),
@@ -892,11 +980,21 @@ func (o *Overlay) onMouseMove(lParam uintptr) {
 	x := int32(lParam & 0xFFFF)
 	y := int32((lParam >> 16) & 0xFFFF)
 
-	// 更新光标
+	// 更新光标（避免重复 SetCursor 导致闪烁）
+	var desiredCursor uintptr
 	if isReady && o.isOverText(int(x), int(y)) {
-		procSetCursor.Call(o.cursorIBeam)
+		desiredCursor = o.cursorIBeam
 	} else {
-		procSetCursor.Call(o.cursorArrow)
+		desiredCursor = o.cursorArrow
+	}
+
+	o.mu.Lock()
+	if o.currentCursor != desiredCursor {
+		o.currentCursor = desiredCursor
+		o.mu.Unlock()
+		procSetCursor.Call(desiredCursor)
+	} else {
+		o.mu.Unlock()
 	}
 
 	if !selecting {
